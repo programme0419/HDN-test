@@ -59,6 +59,56 @@ class Evaluation:
             "coaching": self.coaching,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "Evaluation":
+        """Rebuild an Evaluation from its serialised form (for stored sessions)."""
+        data = data or {}
+
+        def _exps(values) -> List[Expectation]:
+            out: List[Expectation] = []
+            for v in values or []:
+                try:
+                    out.append(Expectation(v))
+                except ValueError:
+                    continue
+            return out
+
+        follow_ups: List[FollowUp] = []
+        for item in data.get("follow_ups") or []:
+            exp_val = item.get("expectation")
+            expectation = None
+            if exp_val:
+                try:
+                    expectation = Expectation(exp_val)
+                except ValueError:
+                    expectation = None
+            follow_ups.append(
+                FollowUp(
+                    question_id=data.get("question_id", ""),
+                    prompt=item.get("prompt", ""),
+                    reason=item.get("reason", ""),
+                    expectation=expectation,
+                )
+            )
+
+        try:
+            level = QualityLevel(data.get("level"))
+        except ValueError:
+            level = QualityLevel.WEAK
+
+        return cls(
+            question_id=data.get("question_id", ""),
+            source=data.get("source", "rules"),
+            passed=bool(data.get("passed", False)),
+            score=int(data.get("score", 0)),
+            level=level,
+            satisfied=_exps(data.get("satisfied")),
+            missing=_exps(data.get("missing")),
+            issues=list(data.get("issues") or []),
+            follow_ups=follow_ups,
+            coaching=data.get("coaching"),
+        )
+
 
 def _from_rules(question: Question, assessment: ResponseAssessment) -> Evaluation:
     return Evaluation(

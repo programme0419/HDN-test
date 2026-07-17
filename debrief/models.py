@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 
 class Expectation(str, Enum):
@@ -66,3 +66,98 @@ class Question:
             raise ValueError("Question.id must be non-empty")
         if not self.prompt:
             raise ValueError(f"Question {self.id!r} must have a prompt")
+
+
+# The mission types offered in the metadata step. Kept broad; "Other" lets an
+# operator record anything not listed.
+MISSION_TYPES: Tuple[str, ...] = (
+    "Reconnaissance",
+    "Direct Action",
+    "Security / Patrol",
+    "Ambush",
+    "Raid",
+    "Cordon & Search",
+    "Convoy / Escort",
+    "Defensive Operation",
+    "Humanitarian / Support",
+    "Training Exercise",
+    "Other",
+)
+
+
+@dataclass
+class MissionMetadata:
+    """Identifying information for the mission being debriefed.
+
+    Captured before the doctrinal questions so every debrief record is
+    attributable to a specific mission, unit, time, and place.
+    """
+
+    mission_name: str = ""
+    date_time: str = ""      # free-text date/time, e.g. "2026-07-17 0530Z"
+    unit: str = ""
+    location: str = ""
+    mission_type: str = ""
+    participants: List[str] = field(default_factory=list)
+
+    def validate(self) -> List[str]:
+        """Return a list of human-readable validation errors (empty if valid)."""
+        errors: List[str] = []
+        if not self.mission_name.strip():
+            errors.append("Mission name is required.")
+        if not self.date_time.strip():
+            errors.append("Mission date/time is required.")
+        if not self.unit.strip():
+            errors.append("Unit is required.")
+        if not self.location.strip():
+            errors.append("Location is required.")
+        if not self.mission_type.strip():
+            errors.append("Mission type is required.")
+        elif self.mission_type not in MISSION_TYPES:
+            errors.append(
+                "Mission type must be one of: " + ", ".join(MISSION_TYPES) + "."
+            )
+        cleaned = [p for p in (self.participants or []) if str(p).strip()]
+        if not cleaned:
+            errors.append("At least one participant is required.")
+        return errors
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.validate()
+
+    def normalised(self) -> "MissionMetadata":
+        """Return a copy with surrounding whitespace stripped and blanks dropped."""
+        return MissionMetadata(
+            mission_name=self.mission_name.strip(),
+            date_time=self.date_time.strip(),
+            unit=self.unit.strip(),
+            location=self.location.strip(),
+            mission_type=self.mission_type.strip(),
+            participants=[p.strip() for p in (self.participants or []) if str(p).strip()],
+        )
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "mission_name": self.mission_name,
+            "date_time": self.date_time,
+            "unit": self.unit,
+            "location": self.location,
+            "mission_type": self.mission_type,
+            "participants": list(self.participants),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, object]) -> "MissionMetadata":
+        data = data or {}
+        participants = data.get("participants") or []
+        if isinstance(participants, str):
+            participants = [p.strip() for p in participants.split(",") if p.strip()]
+        return cls(
+            mission_name=str(data.get("mission_name", "") or ""),
+            date_time=str(data.get("date_time", "") or ""),
+            unit=str(data.get("unit", "") or ""),
+            location=str(data.get("location", "") or ""),
+            mission_type=str(data.get("mission_type", "") or ""),
+            participants=[str(p) for p in participants],
+        )

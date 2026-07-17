@@ -12,8 +12,9 @@ interrogation.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import List
+from typing import Dict, List, Tuple
 
 from .models import Expectation, Question
 from .quality import QualityLevel, ResponseAssessment
@@ -119,5 +120,124 @@ def generate_follow_ups(
                 reason="Response was too brief or too vague to be actionable.",
             )
         )
+
+    return follow_ups
+
+
+# --------------------------------------------------------------------------- #
+# Contextual follow-ups: guided branching + keyword triggers
+#
+# These fire on the *content* of an answer regardless of whether it passed the
+# quality bar, mirroring how a facilitator digs into a specific topic the
+# operator raised (a mentioned system failure) or a decisive yes/no.
+# --------------------------------------------------------------------------- #
+
+_AFFIRMATIVE = re.compile(
+    r"\b(yes|affirmative|achieved|accomplished|successful|success|complete[d]?|"
+    r"met|attained|yep|correct)\b"
+)
+_NEGATIVE = re.compile(
+    r"\b(no|negative|not achieved|unsuccessful|fail(?:ed|ure)?|did not|didn't|"
+    r"unable|incomplete|aborted|not met|partially)\b"
+)
+
+# Per-question yes/no branches. When the answer reads as affirmative or
+# negative, ask the matching branch questions. Keyed by question id.
+_BRANCH_RULES: Dict[str, Dict[str, List[str]]] = {
+    "ov-result": {
+        "affirmative": [
+            "What specific, observable evidence confirms the objective was achieved?",
+        ],
+        "negative": [
+            "What prevented success \u2014 enemy activity, equipment, communications, "
+            "weather, or something else? Name the primary factor.",
+        ],
+    },
+}
+
+# Keyword triggers: if any keyword appears, raise the associated follow-ups.
+# (keywords, follow-up prompts). Order matters only for presentation.
+_KEYWORD_RULES: List[Tuple[Tuple[str, ...], List[str]]] = [
+    (
+        ("communication", "comms", "radio", "net ", "signal", "antenna"),
+        [
+            "Which communications system or net degraded or failed?",
+            "How long was the degradation, and what was the mission impact?",
+        ],
+    ),
+    (
+        ("equipment", "kit", "weapon", "optic", "nvg", "vehicle", "gps", "battery"),
+        [
+            "Which specific equipment was involved, and what was the failure mode?",
+            "What workaround was used, and how did it affect the mission?",
+        ],
+    ),
+    (
+        ("casualt", "wounded", "injur", "kia", "wia", "medevac", "casevac"),
+        [
+            "How many casualties, of what category, and what was the evacuation timeline?",
+        ],
+    ),
+    (
+        ("weather", "rain", "fog", "wind", "visibility", "storm", "heat", "cold"),
+        [
+            "How did the weather specifically affect movement, sensors, or timings?",
+        ],
+    ),
+    (
+        ("ambush", "ied", "contact", "engaged", "fire"),
+        [
+            "Describe the contact using SALUTE (size, activity, location, unit, time, equipment).",
+        ],
+    ),
+]
+
+
+def _branch_key(response_lower: str) -> str | None:
+    """Classify a response as affirmative/negative for branching, or None."""
+    neg = _NEGATIVE.search(response_lower)
+    aff = _AFFIRMATIVE.search(response_lower)
+    if neg and not aff:
+        return "negative"
+    if aff and not neg:
+        return "affirmative"
+    if aff and neg:
+        # Both present (e.g. "partially achieved but ..."): treat as negative so
+        # the operator is pushed to explain the shortfall.
+        return "negative"
+    return None
+
+
+def contextual_follow_ups(question: Question, response: str) -> List[FollowUp]:
+    """Follow-ups driven by the content of the answer (branches + keywords)."""
+
+    lower = (response or "").lower()
+    follow_ups: List[FollowUp] = []
+    seen_prompts = set()
+
+    def _add(prompt: str, reason: str, expectation: Expectation | None = None) -> None:
+        if prompt not in seen_prompts:
+            seen_prompts.add(prompt)
+            follow_ups.append(
+                FollowUp(
+                    question_id=question.id,
+                    prompt=prompt,
+                    reason=reason,
+                    expectation=expectation,
+                )
+            )
+
+    branch = _BRANCH_RULES.get(question.id)
+    if branch:
+        key = _branch_key(lower)
+        if key and branch.get(key):
+            for prompt in branch[key]:
+                _add(prompt, reason=f"Branch follow-up for a {key} answer.")
+
+    for keywords, prompts in _KEYWORD_RULES:
+        if any(k in lower for k in keywords):
+            topic = keywords[0]
+            for prompt in prompts:
+                _add(prompt, reason=f'You mentioned "{topic}"; drilling into specifics.')
 
     return follow_ups
