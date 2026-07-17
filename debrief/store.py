@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 import time
 from typing import List, Optional
 
@@ -49,13 +50,18 @@ class DebriefStore:
         parent = os.path.dirname(self.db_path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        self._conn = sqlite3.connect(self.db_path)
+        # The threading HTTP server handles each request on its own thread, so
+        # the connection is shared across threads and guarded by a lock.
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute(_SCHEMA)
-        self._conn.commit()
+        self._lock = threading.Lock()
+        with self._lock:
+            self._conn.execute(_SCHEMA)
+            self._conn.commit()
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
 
     def __enter__(self) -> "DebriefStore":
         return self
@@ -70,62 +76,67 @@ class DebriefStore:
             overall = session.score().overall
         except Exception:
             overall = 0
-        self._conn.execute(
-            """
-            INSERT INTO sessions
-                (id, mission_name, unit, date_time, mission_type, state,
-                 overall_score, created_at, updated_at, data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                mission_name=excluded.mission_name,
-                unit=excluded.unit,
-                date_time=excluded.date_time,
-                mission_type=excluded.mission_type,
-                state=excluded.state,
-                overall_score=excluded.overall_score,
-                updated_at=excluded.updated_at,
-                data=excluded.data
-            """,
-            (
-                session.id,
-                meta.mission_name,
-                meta.unit,
-                meta.date_time,
-                meta.mission_type,
-                session.state.value,
-                overall,
-                session.created_at,
-                session.updated_at or time.time(),
-                json.dumps(session.to_dict()),
-            ),
+        row = (
+            session.id,
+            meta.mission_name,
+            meta.unit,
+            meta.date_time,
+            meta.mission_type,
+            session.state.value,
+            overall,
+            session.created_at,
+            session.updated_at or time.time(),
+            json.dumps(session.to_dict()),
         )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO sessions
+                    (id, mission_name, unit, date_time, mission_type, state,
+                     overall_score, created_at, updated_at, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    mission_name=excluded.mission_name,
+                    unit=excluded.unit,
+                    date_time=excluded.date_time,
+                    mission_type=excluded.mission_type,
+                    state=excluded.state,
+                    overall_score=excluded.overall_score,
+                    updated_at=excluded.updated_at,
+                    data=excluded.data
+                """,
+                row,
+            )
+            self._conn.commit()
 
     def load(
         self, session_id: str, evaluator: Optional[Evaluator] = None
     ) -> Optional[DebriefSession]:
-        row = self._conn.execute(
-            "SELECT data FROM sessions WHERE id = ?", (session_id,)
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT data FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
         if not row:
             return None
         return DebriefSession.from_dict(json.loads(row["data"]), evaluator=evaluator)
 
     def list(self) -> List[dict]:
         """Return lightweight summaries, most recently updated first."""
-        rows = self._conn.execute(
-            """
-            SELECT id, mission_name, unit, date_time, mission_type, state,
-                   overall_score, created_at, updated_at
-            FROM sessions
-            ORDER BY updated_at DESC
-            """
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id, mission_name, unit, date_time, mission_type, state,
+                       overall_score, created_at, updated_at
+                FROM sessions
+                ORDER BY updated_at DESC
+                """
+            ).fetchall()
         return [dict(row) for row in rows]
 
     def delete(self, session_id: str) -> bool:
-        cur = self._conn.execute(
-            "DELETE FROM sessions WHERE id = ?", (session_id,)
-        )
-        self._conn.commit()
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM sessions WHERE id = ?", (session_id,)
+            )
+            self._conn.commit()
         return cur.rowcount > 0
