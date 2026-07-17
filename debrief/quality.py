@@ -51,6 +51,7 @@ _TIME_PATTERNS = [
     r"\bh-?\s?(?:hour|hr)\b",              # H-hour
     r"\bh\s?[+-]\s?\d+",                   # H+30, H-10
     r"\b\d{3,4}\s?(?:hrs?|z|zulu|local)\b",  # 0530hrs, 1300Z
+    r"\b(?:[01]\d|2[0-3])[0-5]\d\b",       # bare 24h clock: 0600, 1300, 2359
     r"\b\d{1,2}:\d{2}\b",                   # 05:30
     r"\b\d{1,2}\s?(?:am|pm)\b",            # 5pm
     r"\b\d+\s?(?:sec(?:ond)?s?|min(?:ute)?s?|hours?|hrs?|days?)\b",  # durations
@@ -259,12 +260,14 @@ def assess_response(question: Question, response: str) -> ResponseAssessment:
 
     # ------------------------------------------------------------------ #
     # Level
+    #
+    # Brevity is already penalised in the score, so it is not a hard gate on
+    # its own. A missing doctrinal element or dominant vagueness, however,
+    # caps an answer below STRONG regardless of length.
     # ------------------------------------------------------------------ #
-    missing_required_detail = bool(missing) or too_short or vague_dominates
-
-    if score >= 80 and not missing_required_detail:
+    if score >= 80 and not missing and not vague_dominates:
         level = QualityLevel.STRONG
-    elif score >= 55 and not too_short and not vague_dominates:
+    elif score >= 55 and not vague_dominates:
         level = QualityLevel.ADEQUATE
     else:
         level = QualityLevel.WEAK
