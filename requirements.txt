@@ -1,0 +1,8 @@
+# The core tool runs on the Python standard library only.
+#
+# Optional: install pywebview for a native desktop window instead of the
+# default-browser fallback used by app.py.
+#
+#   pip install pywebview
+#
+# pywebview>=4.0
