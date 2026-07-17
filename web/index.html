@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>After-Action Debrief</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark">AAR</span>
+      <span class="brand-name">After-Action Debrief</span>
+    </div>
+    <div class="header-status">
+      <span id="engine-badge" class="badge badge-muted" title="Assessment engine">engine: …</span>
+      <button id="btn-home" class="btn btn-ghost hidden">Home</button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <!-- Home / session list -->
+    <section id="view-home" class="view">
+      <div class="hero">
+        <h1>Post-Mission Debrief</h1>
+        <p class="subtitle">
+          A doctrinally guided After-Action Review. Answer each question; the tool
+          checks your responses and asks follow-ups until the debrief is complete.
+        </p>
+        <button id="btn-new" class="btn btn-primary btn-lg">Start new debrief</button>
+      </div>
+
+      <div class="panel">
+        <h2>Saved debriefs</h2>
+        <div id="session-list" class="session-list">
+          <p class="empty">No saved debriefs yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mission metadata -->
+    <section id="view-metadata" class="view hidden">
+      <div class="panel form-panel">
+        <h2>Mission details</h2>
+        <p class="hint">Identify the mission before the debrief begins.</p>
+        <div id="meta-errors" class="errors hidden"></div>
+        <form id="meta-form" class="form-grid">
+          <label>Mission name
+            <input type="text" name="mission_name" placeholder="e.g. Op Iron Vigil" required />
+          </label>
+          <label>Date / time
+            <input type="text" name="date_time" placeholder="e.g. 2026-07-17 0530Z" required />
+          </label>
+          <label>Unit
+            <input type="text" name="unit" placeholder="e.g. 1st Platoon, A Coy" required />
+          </label>
+          <label>Location
+            <input type="text" name="location" placeholder="e.g. Grid 33UXP 1234 5678" required />
+          </label>
+          <label>Mission type
+            <select name="mission_type" id="mission-type" required>
+              <option value="">Select…</option>
+            </select>
+          </label>
+          <label>Participants
+            <input type="text" name="participants" placeholder="Comma-separated call signs / names" required />
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Begin debrief</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Debrief flow -->
+    <section id="view-debrief" class="view hidden">
+      <div class="debrief-layout">
+        <aside class="sidebar">
+          <div class="progress">
+            <div class="progress-head">
+              <span>Progress</span>
+              <span id="progress-pct">0%</span>
+            </div>
+            <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+          </div>
+          <ul id="section-list" class="section-list"></ul>
+        </aside>
+
+        <div class="debrief-main">
+          <div class="question-card">
+            <div class="q-meta">
+              <span id="q-phase" class="chip"></span>
+              <span id="q-followup" class="chip chip-alert hidden">Follow-up</span>
+              <span id="q-optional" class="chip chip-muted hidden">Optional</span>
+            </div>
+            <h2 id="q-prompt" class="q-prompt"></h2>
+            <p id="q-reason" class="q-reason hidden"></p>
+            <p id="q-intent" class="q-intent"></p>
+            <textarea id="answer" class="answer" rows="6"
+              placeholder="Give specific, observable facts: times, locations, numbers, causes, and effects."></textarea>
+            <div class="q-actions">
+              <button id="btn-skip" class="btn btn-ghost">Skip</button>
+              <button id="btn-next" class="btn btn-primary">Submit &amp; next</button>
+            </div>
+          </div>
+
+          <div id="feedback" class="feedback hidden"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Summary -->
+    <section id="view-summary" class="view hidden">
+      <div class="panel">
+        <h2>Debrief complete</h2>
+        <div class="score-hero">
+          <div class="score-ring">
+            <span id="overall-score">0</span><small>/100</small>
+          </div>
+          <div class="score-caption">
+            <p id="score-summary"></p>
+          </div>
+        </div>
+        <ul id="summary-sections" class="section-list summary"></ul>
+        <div class="form-actions">
+          <button id="btn-report" class="btn btn-primary">View report</button>
+          <button id="btn-download" class="btn btn-ghost">Download .md</button>
+        </div>
+      </div>
+      <div id="report-view" class="panel report hidden">
+        <h2>After-Action Report</h2>
+        <pre id="report-text" class="report-text"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
